@@ -9,26 +9,29 @@ from django.contrib.auth import authenticate, login
 from django.core.urlresolvers import reverse
 from django.contrib.auth.decorators import login_required
 from django.contrib.auth import logout
+from datetime import datetime
 
 def index(request):
-    # Query DB for list of ALL categories currently stored.
-    # Order cats by no. likes in descending Order
-    # Retrieve the top 5 only - or all if less than 5
-    # Place list in context_dict dictionary
-    # that's passed to template engine
+    request.session.set_test_cookie()
     category_list = Category.objects.order_by('-likes')[:5]
     page_list = Page.objects.order_by('-views')[:5]
-    context_dict = {'categories' : category_list, 'pages': page_list}
+    context_dict = {'categories': category_list, 'pages': page_list}
 
+    visitor_cookie_handler(request)
+    context_dict['visits'] = request.session['visits']
+    print(request.session['visits'])
 
-    # What's going on: this returns a rendered response to send to client.  We make use
-    # of the shortcut function to make life easier. Note that 1st parameter is template we want to use
     response = render(request, 'rango/index.html', context=context_dict)
     return response
 
 
 def about(request):
-    context_dict = {'aboutmessage' : "here is the about page"}
+    if request.session.test_cookie_worked():
+        print("TEST COOKIE WORKED!")
+        request.session.delete_test_cookie()
+
+    visitor_cookie_handler(request)
+    context_dict = {'visits': request.session['visits']}
 
     # return HttpResponse("Rango says here is the about page. <br/> <a href='/rango/'>View Index</a>")
     return render(request, 'rango/about.html', context=context_dict)
@@ -210,3 +213,24 @@ def user_logout(request):
     logout(request)
     # take user to homepage
     return HttpResponseRedirect(reverse('index'))
+
+
+def get_server_side_cookie(request, cookie, default_val=None):
+    val = request.session.get(cookie)
+    if not val:
+        val = default_val
+    return val
+
+
+
+def visitor_cookie_handler(request, response):
+    visits = int(get_server_side_cookie(request, 'visits', '1'))
+    last_visit_cookie = get_server_side_cookie(request, 'last_visit', str(datetime.now()) )
+    last_visit_time = datetime.strptime(last_visit_cookie[:-7], "%Y-%m-%d %H:%M:%S")
+    if (datetime.now() - last_visit_time).seconds > 0:
+        visits = visits + 1
+        request.session['last_visit'] = str(datetime.now())
+    else:
+        visits = 1
+        request.session['last_visit'] = last_visit_cookie
+    request.session['visits'] = visits
